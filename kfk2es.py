@@ -38,7 +38,7 @@ from kafka import KafkaConsumer
 from elasticsearch import Elasticsearch, helpers
 
 
-__all__ = ['StreamProcess', 'conf']
+__all__ = ['StreamProcess', 'conf', 'argparser']
 
 
 argparser = ArgumentParser()
@@ -61,34 +61,39 @@ except Exception as e:
 hostname = socket.gethostname()
 
 
-def kfk_input(servers, topic, user, password, group_id, client_id):
-    consumer = KafkaConsumer(topic,
-                             bootstrap_servers=servers,
-                             security_protocol="SASL_PLAINTEXT",
-                             sasl_mechanism="PLAIN",
-                             sasl_plain_username=user,
-                             sasl_plain_password=password,
-                             client_id=client_id,
-                             group_id=group_id,
-                             auto_offset_reset="earliest",
-                             enable_auto_commit=True,
-                             auto_commit_interval_ms=5000
-                             )
-    for msg in consumer:
-        yield msg.value
-
-
 class StreamProcess:
     def __init__(self, queue_size=0, es_cache_size=150, es_timeout=1):
         self.inputs = []
         for kfk_args in KFKS:
             kfk_args['client_id'] = hostname
-            self.inputs.append((kfk_input, kfk_args))
+            self.inputs.append((self.input, kfk_args))
         self.es = Elasticsearch(ES_SERVERS)
         self.es_cache_size = es_cache_size
         self.es_timeout = es_timeout
         self.handler = None
         self.q = queue.Queue(queue_size)
+        self.enable = True
+
+    def input(self, servers, topic, user, password, group_id, client_id):
+        ''' kafka input'''
+        consumer = KafkaConsumer(topic,
+                                 bootstrap_servers=servers,
+                                 security_protocol="SASL_PLAINTEXT",
+                                 sasl_mechanism="PLAIN",
+                                 sasl_plain_username=user,
+                                 sasl_plain_password=password,
+                                 client_id=client_id,
+                                 group_id=group_id,
+                                 auto_offset_reset="earliest",
+                                 enable_auto_commit=True,
+                                 auto_commit_interval_ms=5000
+                                 )
+        for msg in consumer:
+            yield msg.value
+            if not self.enable:
+                logging.info('stopping kafka input')
+                break
+        consumer.close()
 
     def _push_to_queue(self, data):
         while True:
@@ -123,11 +128,65 @@ class StreamProcess:
             except queue.Empty:
                 break
 
+    def output(self):
+        while True:
+            if not self.enable and self.q.empty():
+                logging.info('stopping elasticsearch output')
+                break
+            helpers.bulk(self.es, self._escache())
+
     def run(self):
-        jobs = []
+        jobs = {}
+        job_id = 0
+        enable = True
         for inputs in self.inputs:
             t = threading.Thread(target=self._process, args=inputs)
-            jobs.append(t, inputs)
+            t.setDaemon(True)
+            jobs[job_id] = (t, inputs)
+            job_id += 1
             t.start()
+        outputer = threading.Thread(target=self.output)
+        outputer.setDaemon(True)
+        outputer.start()
+        jobs[job_id] = (outputer, tuple())
         while True:
-            helpers.bulk(self.es, self._escache())
+            try:
+                if not enable:
+                    break
+                for job_id, job in jobs.items():
+                    if not job[0].is_alive() and self.enable:
+                        logging.error('job failed, restarting..')
+                        job_arg = job[1]
+                        t = threading.Thread(target=self._process, args=job_arg)
+                        t.setDaemon(True)
+                        t.start()
+                        jobs[job_id] = (t, job_arg)
+                    elif job[0].is_alive() and not self.enable:
+                        break
+                    elif job[0].is_alive() and self.enable:
+                        pass
+                    else:
+                        enable = False
+                time.sleep(0.5)
+            except KeyboardInterrupt:
+                logging.info('stopping all jobs')
+                self.enable = False
+
+
+def handler_sample(event):
+    '''
+    handler sample, do not send data to elasticsearch
+    '''
+    print(event)
+    time.sleep(1)
+
+
+def testcase():
+    logging.basicConfig(level=logging.INFO)
+    pipe = StreamProcess()
+    pipe.handler = handler_sample
+    pipe.run()
+
+
+if __name__ == '__main__':
+    testcase()
