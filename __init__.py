@@ -33,7 +33,7 @@ from datetime import datetime
 import threading
 import logging
 
-from myconf import Conf
+from .myconf import Conf
 from kafka import KafkaConsumer
 from elasticsearch import Elasticsearch, helpers
 
@@ -171,22 +171,3 @@ class StreamProcess:
             except KeyboardInterrupt:
                 logging.info('stopping all jobs')
                 self.enable = False
-
-
-def handler_sample(event):
-    '''
-    handler sample, do not send data to elasticsearch
-    '''
-    print(event)
-    time.sleep(1)
-
-
-def testcase():
-    logging.basicConfig(level=logging.INFO)
-    pipe = StreamProcess()
-    pipe.handler = handler_sample
-    pipe.run()
-
-
-if __name__ == '__main__':
-    testcase()
