@@ -1,2 +1,4 @@
 elasticsearch>=6.3.1
 kafka-python>=1.4.4
+PyYAML>=3.13
+pyinotify==0.9.6
