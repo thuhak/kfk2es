@@ -31,9 +31,9 @@ import queue
 import time
 from datetime import datetime
 import threading
-import json
 import logging
 
+from myconf import Conf
 from kafka import KafkaConsumer
 from elasticsearch import Elasticsearch, helpers
 
@@ -46,13 +46,13 @@ argparser.add_argument('-c', '--config', default='config.json', help='config fil
 args = argparser.parse_args()
 config_file = args.config
 
+
 try:
-    with open(config_file) as f:
-        conf = json.load(f)
-        KFKS = conf['kfk']
-        ES_SERVERS = conf['elasticsearch']['servers']
-        ES_INDEX = conf['elasticsearch']['index']
-        ES_DOC_TYPE = conf['elasticsearch'].get('type', 'log')
+    conf = Conf(args.config)
+    KFKS = conf['kfk']
+    ES_SERVERS = conf['elasticsearch']['servers']
+    ES_INDEX = conf['elasticsearch']['index']
+    ES_DOC_TYPE = conf['elasticsearch'].get('type', 'log')
 except Exception as e:
     print('config file wrong')
     exit(127)

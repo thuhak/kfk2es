@@ -1,0 +1,3 @@
+[submodule "myconf"]
+	path = myconf
+	url = git@git.nevint.com:infra/myconf.git
