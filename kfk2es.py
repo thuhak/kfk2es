@@ -2,27 +2,28 @@
 '''
 processing data received from kafka, then send to elasticsearch
 
-you need a config file in json format
+you need a config file in json or yaml format
 sample:
+
+config.json
 
 {
   "kfk": [
     {
-    "servers": ["10.0.0.1:9092", "10.0.0.2:9092", "10.0.0.3:9092"],
-    "user": "user",
-    "password": "password",
     "topic": "topic",
+    "bootstrap_servers": ["10.0.0.1:9092", "10.0.0.2:9092", "10.0.0.3:9092"],
+    "sasl_plain_username": "user",
+    "sasl_plain_password": "password",
     "group_id": "group"
     }
   ],
 
   "elasticsearch":{
-    "servers": ["http://user:pass@10.1.0.1:9200", "http://user:pass@10.1.0.2:9200"],
+    "hosts": ["http://user:pass@10.1.0.1:9200", "http://user:pass@10.1.0.2:9200"],
     "index": "index",
     "type": "log"
   }
 }
-
 '''
 # author: thuhak.zhou@nio.com
 from argparse import ArgumentParser
@@ -38,7 +39,7 @@ from elasticsearch import Elasticsearch, helpers
 
 try:
     from .myconf import Conf
-except:
+except ImportError:
     from myconf import Conf
 
 
@@ -46,29 +47,32 @@ argparser = ArgumentParser()
 argparser.add_argument('-c', '--config', default='config.json', help='config file in json format')
 args = argparser.parse_args()
 logger = logging.getLogger(__name__)
+hostname = socket.gethostname()
 
 
 try:
     conf = Conf(args.config)
     KFKS = conf['kfk']
-    ES_SERVERS = conf['elasticsearch']['servers']
-    ES_INDEX = conf['elasticsearch']['index']
-    ES_DOC_TYPE = conf['elasticsearch'].get('type', 'log')
-except Exception as e:
-    logger.info('config file wrong')
+    ES = conf['elasticsearch']
+    ES_INDEX = ES.pop('index')
+    if 'type' in ES:
+        ES_DOC_TYPE = ES.pop('type')
+    else:
+        ES_DOC_TYPE = 'log'
+except:
+    logger.error('config file wrong')
     exit(127)
-
-
-hostname = socket.gethostname()
 
 
 class StreamProcess:
     def __init__(self, queue_size=0, es_cache_size=150, es_timeout=1, force_exit=5):
-        self.inputs = []
-        for kfk_args in KFKS:
-            kfk_args['client_id'] = hostname
-            self.inputs.append((self.input, kfk_args))
-        self.es = Elasticsearch(ES_SERVERS)
+        self.inputs = [kfk for kfk in KFKS]
+        try:
+            self.es = Elasticsearch(ES)
+        except:
+            logger.error('elastic config wrong')
+            logger.error(Elasticsearch.__doc__)
+            exit(127)
         self.es_cache_size = es_cache_size
         self.es_timeout = es_timeout
         self.handler = None
@@ -76,22 +80,26 @@ class StreamProcess:
         self.force_exit = force_exit
         self.stop_event = threading.Event()
 
-    def input(self, servers, topic, user, password, group_id, client_id):
-        ''' kafka input'''
-        consumer = KafkaConsumer(topic,
-                                 bootstrap_servers=servers,
-                                 security_protocol="SASL_PLAINTEXT",
-                                 sasl_mechanism="PLAIN",
-                                 sasl_plain_username=user,
-                                 sasl_plain_password=password,
-                                 client_id=client_id,
-                                 group_id=group_id,
-                                 auto_offset_reset="earliest",
-                                 enable_auto_commit=True,
-                                 auto_commit_interval_ms=5000
-                                 )
+    def input(self, **kwargs):
+        '''kafka input'''
+        topic = kwargs.pop('topic')
+        kfk_config = {
+            "security_protocol": "SASL_PLAINTEXT",
+            "sasl_mechanism": "PLAIN",
+            "enable_auto_commit": True,
+            "auto_commit_interval_ms": 5000,
+            "client_id": hostname
+        }
+        kfk_config.update(kwargs)
+        try:
+            consumer = KafkaConsumer(topic, **kfk_config)
+        except TypeError as e:
+            logger.error('not correct kafka param {}'.format(str(e)))
+            logger.error(KafkaConsumer.__doc__)
+            self.force_exit = 0
+            self.stop_event.set()
         while not self.stop_event.is_set():
-            logger.debug('getting data from kafka')
+            logger.debug('ready to data from kafka {}'.format(str(kfk_config['bootstrap_servers'])))
             for msg in consumer:
                 yield msg.value
                 if self.stop_event.is_set():
@@ -107,8 +115,8 @@ class StreamProcess:
             except queue.Full:
                 time.sleep(0.1)
 
-    def _process(self, input, kwargs):
-        for event in input(**kwargs):
+    def _process(self, kwargs):
+        for event in self.input(**kwargs):
             logger.info('get data from kafka')
             logger.debug('processing event {}'.format(event))
             if not self.handler:
@@ -145,7 +153,7 @@ class StreamProcess:
         enable = True
         deadtime = float('inf')
         for inputs in self.inputs:
-            t = threading.Thread(target=self._process, args=inputs)
+            t = threading.Thread(target=self._process, args=[inputs])
             t.setDaemon(True)
             jobs[job_id] = (t, inputs)
             job_id += 1
