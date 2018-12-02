@@ -1,3 +1,4 @@
+MAINTAINER thuhak.zhou@nio.com
 FROM docker.io/python
 WORKDIR /
 COPY __init__.py kfk2es/
