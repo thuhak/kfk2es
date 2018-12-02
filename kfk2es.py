@@ -65,6 +65,14 @@ except:
 
 
 class StreamProcess:
+    '''
+    kafka inputs --> queue --> es_cache --> elasticsearch
+
+    queue_size(int): size of queue, 0 means infinite
+    es_cache_size(int): size for es_cache
+    es_timeout(int): when reach timeout(seconds), force send data in cache even cache is not full
+    force_exit(int): when ctrl-c is pushed, wait force_exit seconds for left data in memory
+    '''
     def __init__(self, queue_size=0, es_cache_size=150, es_timeout=1, force_exit=5):
         self.inputs = [kfk for kfk in KFKS]
         try:
