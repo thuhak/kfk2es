@@ -63,7 +63,7 @@ hostname = socket.gethostname()
 
 
 class StreamProcess:
-    def __init__(self, queue_size=0, es_cache_size=150, es_timeout=1):
+    def __init__(self, queue_size=0, es_cache_size=150, es_timeout=1, force_exit=5):
         self.inputs = []
         for kfk_args in KFKS:
             kfk_args['client_id'] = hostname
@@ -73,6 +73,7 @@ class StreamProcess:
         self.es_timeout = es_timeout
         self.handler = None
         self.q = queue.Queue(queue_size)
+        self.force_exit = force_exit
         self.stop_event = threading.Event()
 
     def input(self, servers, topic, user, password, group_id, client_id):
@@ -142,6 +143,7 @@ class StreamProcess:
         jobs = {}
         job_id = 0
         enable = True
+        deadtime = float('inf')
         for inputs in self.inputs:
             t = threading.Thread(target=self._process, args=inputs)
             t.setDaemon(True)
@@ -165,7 +167,11 @@ class StreamProcess:
                         t.start()
                         jobs[job_id] = (t, job_arg)
                     elif job[0].is_alive() and self.stop_event.is_set():
-                        logger.debug('job still working,not ready for stop')
+                        if time.time() <= deadtime:
+                            logger.info('job still working,not ready for stop')
+                        else:
+                            logger.info('job still working, but it`s time to die')
+                            enable = False
                         break
                     elif job[0].is_alive() and not self.stop_event.is_set():
                         pass
@@ -175,6 +181,7 @@ class StreamProcess:
             except KeyboardInterrupt:
                 logger.info('stopping all jobs')
                 self.stop_event.set()
+                deadtime = time.time() + self.force_exit
 
 
 def handler_sample(event):
