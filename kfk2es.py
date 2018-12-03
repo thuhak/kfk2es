@@ -161,15 +161,15 @@ class StreamProcess:
         enable = True
         deadtime = float('inf')
         for inputs in self.inputs:
-            t = threading.Thread(target=self._process, args=[inputs])
+            t = threading.Thread(target=self._process, args=(inputs))
             t.setDaemon(True)
-            jobs[job_id] = (t, inputs)
+            jobs[job_id] = (t, (self._process, (inputs)))
             job_id += 1
             t.start()
         outputer = threading.Thread(target=self.output)
         outputer.setDaemon(True)
         outputer.start()
-        jobs[job_id] = (outputer, [])
+        jobs[job_id] = (outputer, (self.output, tuple()))
         while True:
             try:
                 if not enable:
@@ -177,10 +177,11 @@ class StreamProcess:
                 for job_id, job in jobs.items():
                     if not job[0].is_alive() and not self.stop_event.is_set():
                         logger.error('job failed, restarting..')
-                        t = threading.Thread(target=self._process, args=[job[1]])
+                        func, func_arg= job[1]
+                        t = threading.Thread(target=func, args=func_arg)
                         t.setDaemon(True)
                         t.start()
-                        jobs[job_id] = (t, job[1])
+                        jobs[job_id] = (t, (func, func_arg))
                     elif job[0].is_alive() and self.stop_event.is_set():
                         if time.time() <= deadtime:
                             logger.info('job still working,not ready for stop')
