@@ -76,7 +76,7 @@ class StreamProcess:
     def __init__(self, queue_size=0, es_cache_size=150, es_timeout=1, force_exit=5):
         self.inputs = [kfk for kfk in KFKS]
         try:
-            self.es = Elasticsearch(ES)
+            self.es = Elasticsearch(**ES)
         except:
             logger.error('elastic config wrong')
             logger.error(Elasticsearch.__doc__)
@@ -169,7 +169,7 @@ class StreamProcess:
         outputer = threading.Thread(target=self.output)
         outputer.setDaemon(True)
         outputer.start()
-        jobs[job_id] = (outputer, tuple())
+        jobs[job_id] = (outputer, [])
         while True:
             try:
                 if not enable:
