@@ -177,11 +177,10 @@ class StreamProcess:
                 for job_id, job in jobs.items():
                     if not job[0].is_alive() and not self.stop_event.is_set():
                         logger.error('job failed, restarting..')
-                        job_arg = job[1]
-                        t = threading.Thread(target=self._process, args=job_arg)
+                        t = threading.Thread(target=self._process, args=[job[1]])
                         t.setDaemon(True)
                         t.start()
-                        jobs[job_id] = (t, job_arg)
+                        jobs[job_id] = (t, job[1])
                     elif job[0].is_alive() and self.stop_event.is_set():
                         if time.time() <= deadtime:
                             logger.info('job still working,not ready for stop')
