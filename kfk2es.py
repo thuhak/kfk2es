@@ -74,7 +74,7 @@ class StreamProcess:
     force_exit(int): when ctrl-c is pushed, wait force_exit seconds for left data in memory
     '''
     def __init__(self, queue_size=0, es_cache_size=150, es_timeout=1, force_exit=5):
-        self.inputs = [kfk for kfk in KFKS]
+        self.inputs = KFKS
         try:
             self.es = Elasticsearch(**ES)
         except:
@@ -161,9 +161,9 @@ class StreamProcess:
         enable = True
         deadtime = float('inf')
         for inputs in self.inputs:
-            t = threading.Thread(target=self._process, args=(inputs))
+            t = threading.Thread(target=self._process, args=[inputs])
             t.setDaemon(True)
-            jobs[job_id] = (t, (self._process, (inputs)))
+            jobs[job_id] = (t, (self._process, [inputs]))
             job_id += 1
             t.start()
         outputer = threading.Thread(target=self.output)
