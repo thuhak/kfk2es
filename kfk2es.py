@@ -20,7 +20,7 @@ config.json
 
   "elasticsearch":{
     "hosts": ["http://user:pass@10.1.0.1:9200", "http://user:pass@10.1.0.2:9200"],
-    "index": "index",
+    "index": "index-%Y%m%d",
     "type": "log"
   }
 }
@@ -142,9 +142,16 @@ class StreamProcess:
         for _ in range(self.es_cache_size):
             try:
                 data = self.q.get(timeout=self.es_timeout)
+                if isinstance(data, tuple) and len(data) == 3:
+                    index_pat = data[0] if isinstance(data[0], str) else ES_INDEX
+                    doc_type = data[1] if isinstance(data[1], str) else ES_DOC_TYPE
+                    data = data[2]
+                else:
+                    index_pat = ES_INDEX
+                    doc_type = ES_DOC_TYPE
                 t = datetime.utcnow()
-                index = ES_INDEX + '-' + t.strftime('%Y-%m-%d')
-                yield {'_index': index, '_type': ES_DOC_TYPE, '_source': data}
+                index = t.strftime(index_pat)
+                yield {'_index': index, '_type': doc_type, '_source': data}
             except queue.Empty:
                 break
 
@@ -153,7 +160,11 @@ class StreamProcess:
             if self.stop_event.is_set() and self.q.empty():
                 logger.info('stopping elasticsearch output')
                 break
-            helpers.bulk(self.es, self._escache())
+            try:
+                helpers.bulk(self.es, self._escache())
+            except Exception as e:
+                logger.error('elastic output error')
+                logger.debug(str(e))
 
     def run(self):
         jobs = {}
