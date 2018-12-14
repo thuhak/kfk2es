@@ -110,6 +110,8 @@ class StreamProcess:
             logger.debug('ready to data from kafka {}'.format(str(kfk_config['bootstrap_servers'])))
             for msg in consumer:
                 yield msg.value
+                if not kfk_config.get("enable_auto_commit", False):
+                    consumer.commit()
                 if self.stop_event.is_set():
                     logger.info('stopping kafka input')
                     break
