@@ -151,7 +151,7 @@ class StreamProcess:
                 else:
                     index_pat = ES_INDEX
                     doc_type = ES_DOC_TYPE
-                t = datetime.utcnow()
+                t = data['@timestamp'] if isinstance(data.get('@timestamp'), datetime) else datetime.utcnow()
                 index = t.strftime(index_pat)
                 yield {'_index': index, '_type': doc_type, '_source': data}
             except queue.Empty:
