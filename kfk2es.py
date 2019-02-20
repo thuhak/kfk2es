@@ -36,11 +36,8 @@ import logging
 
 from kafka import KafkaConsumer
 from elasticsearch import Elasticsearch, helpers
+from myconf import Conf
 
-try:
-    from .myconf import Conf
-except ImportError:
-    from myconf import Conf
 
 
 argparser = ArgumentParser()
